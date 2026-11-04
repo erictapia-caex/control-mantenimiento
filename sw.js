@@ -1,4 +1,4 @@
-var CACHE = 'cm-v7';
+var CACHE = 'cm-v8';
 var ARCHIVOS = ['./', './manifest.json', './icono-192.png', './icono-512.png', './icono-maskable.png'];
 function limpia(r) {
   // una respuesta que vino de una redireccion no se puede usar para abrir la pagina; se copia limpia

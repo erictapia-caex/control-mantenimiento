@@ -111,6 +111,7 @@ var SISTEMAS = ['Motor','Transmisión','Convertidor','Diferencial / mandos final
 var FL = ['10W','30W','60W','15W40','Refrigerante'];
 var TXT = {
   'Cambio de componente': { titulo: '¿Qué componente cambiaste?', ph: 'Ej: bomba de dirección', falta: 'componente cambiado', res: 'Componente cambiado' },
+  'Otros': { titulo: '¿Qué otro trabajo realizaste?', ph: 'Ej: limpieza de radiador', falta: 'detalle de otros trabajos', res: 'Otro trabajo' },
   'Reparación': { titulo: '¿Qué reparación realizaste?', ph: 'Ej: reparación de manguera de levante', falta: 'reparación realizada', res: 'Reparación realizada' }
 };
 var MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -140,8 +141,8 @@ var S;
 function nuevo() {
   var nombres = S ? S.names : vacios();
   var base = {
-    view: S ? S.view : 'form', step: 1, picked: NOW.getDate(), names: nombres, caex: '', hor: '', ini: '',
-    elim: false, marcados: {}, impr: false, mImp: {}, env: false, mEnv: {}, tipos: [], pm: '', dets: [], dt: {}, ab: {}, kg: '', sel: [], trab: '', ans: '', reps: [repVacio()], turno: '', pickedTer: NOW.getDate(),
+    view: S ? S.view : 'form', step: 1, picked: NOW.getDate(), names: nombres, caex: '', caexOtro: '', sisOtro: '', fotos: [], hor: '', ini: '',
+    elim: false, marcados: {}, impr: false, mImp: {}, env: false, mEnv: {}, tipos: [], pm: '', dets: [], dt: {}, ab: {}, kg: '', sel: [], trab: '', ans: '', reps: [repVacio()], turno: '', grupo: '', pickedTer: NOW.getDate(),
     ter: '', est: '', obs: '', show: false, sent: false, sending: false, sendErr: '',
     modal: null, tmp: null, err: false, pk: null,
     caexList: S ? S.caexList : CAEX_DEF.slice(), hist: S ? S.hist : null, histErr: '', fCaex: S ? S.fCaex : '', fDate: S ? S.fDate : ''
@@ -152,7 +153,7 @@ S = nuevo();
 try { localStorage.removeItem('cm_nombres'); } catch (e) {}
 
 function caexSel() { return S.caex ? S.caex.split(', ') : []; }
-function nomC(c) { return String(c || '').split(', ').map(function (x) { return x === 'Otros' ? 'Otros' : 'CAEX ' + x; }).join(', '); }
+function nomC(c) { return String(c || '').split(', ').map(function (x) { return x.indexOf('Otros') === 0 ? x : 'CAEX ' + x; }).join(', '); }
 function soloOtros() { return S.caex === 'Otros'; }
 function set(o) { for (var k in o) S[k] = o[k]; render(); }
 function has(t) { return S.tipos.indexOf(t) >= 0; }
@@ -163,14 +164,16 @@ function faltas() {
   var m1 = [], m2 = [], m3 = [], m4 = [];
   if (S.names.every(function (n) { return !n.trim(); })) m1.push('al menos un mantenedor');
   if (!S.caex) m1.push('N° de CAEX');
+  if (caexSel().indexOf('Otros') >= 0 && !S.caexOtro.trim()) m1.push('qué equipo es (Otros)');
   if (!S.hor && !soloOtros()) m1.push('horómetro');
-  if (!S.ini) m1.push('hora de inicio'); if (!S.turno) m1.push('turno');
+  if (!S.ini) m1.push('hora de inicio'); if (!S.turno) m1.push('turno'); if (!S.grupo) m1.push('grupo (G1-G4)');
   if (!S.tipos.length) m2.push('tipo de trabajo');
   if (has('Abastecimiento') && !FL.some(function (f) { return Number(S.ab[f]) > 0; }) && !S.ab.aire) m2.push('litros de abastecimiento');
   if (has('Engrase') && !(Number(S.kg) > 0)) m2.push('kg de grasa');
   Object.keys(TXT).forEach(function (t) { if (has(t) && !(S.dt[t] || '').trim()) m2.push(TXT[t].falta); });
   if (!S.dets.length) m2.push('tipo de detención');
   if (!S.sel.length) m2.push('sistema con falla');
+  if (S.sel.indexOf('Otro') >= 0 && !S.sisOtro.trim()) m2.push('cuál es el otro sistema');
   if (!S.trab.trim()) m2.push('trabajo realizado');
   if (!S.ans) m3.push('¿se cambió algún componente?');
   if (S.ans === 'si') S.reps.forEach(function (r, i) {
@@ -219,9 +222,13 @@ var A = {
     sig(0);
   },
   go: function (n) { set({ step: n }); window.scrollTo(0, 0); },
-  day: function (d) { set({ picked: d }); }, dayTer: function (d) { set({ pickedTer: d }); }, turno: function (t) { set({ turno: t }); },
+  day: function (d) { set({ picked: d }); }, dayTer: function (d) { set({ pickedTer: d }); }, turno: function (t) { set({ turno: t }); }, grupo: function (g) { set({ grupo: g }); },
   caex: function (v) { var l = caexSel(); l = l.indexOf(v) >= 0 ? l.filter(function (x) { return x !== v; }) : l.concat([v]); var orden = S.caexList.concat(['Otros']); l.sort(function (a, b) { return orden.indexOf(a) - orden.indexOf(b); }); set({ caex: l.join(', ') }); },
   hor: function (v) { S.hor = v; },
+  caexOtro: function (v) { S.caexOtro = v; },
+  sisOtro: function (v) { S.sisOtro = v; },
+  foto: function (inp) { var f = inp.files && inp.files[0]; inp.value = ''; if (!f) return; achicarFoto(f).then(function (d) { if (S.fotos.length < 4) S.fotos.push(d); render(); }).catch(function () { alert('No se pudo leer la foto. Intenta de nuevo.'); }); },
+  delFoto: function (i) { S.fotos.splice(i, 1); render(); },
   trab: function (v) { S.trab = v; },
   obs: function (v) { S.obs = v; },
   tmp: function (k, v) { if (k === null) S.tmp = v; else S.tmp[k] = v; },
@@ -285,7 +292,7 @@ var A = {
     if (!f.every(function (x) { return !x.length; })) return set({ show: true });
     var c = leerCola();
     c.push({ uid: Date.now() + '-' + Math.random().toString(36).slice(2, 8), registro: armarRegistro() });
-    guardarCola(c);
+    if (!guardarCola(c)) return alert('La memoria del celular para trabajos pendientes está llena. Conéctate a internet para que se envíen los pendientes y vuelve a intentar.');
     set({ sent: true, sending: false, sendErr: '' }); window.scrollTo(0, 0);
     enviarCola();
   },
@@ -305,7 +312,9 @@ function api(datos) {
   return op.then(function (r) { return r.json(); }).then(function (j) { clearTimeout(t); if (!j.ok) throw new Error(j.error || 'Error del servidor'); return j.r; });
 }
 function leerCola() { try { return JSON.parse(localStorage.getItem('cm_cola') || '[]'); } catch (e) { return []; } }
-function guardarCola(c) { try { localStorage.setItem('cm_cola', JSON.stringify(c)); } catch (e) {} }
+function guardarCola(c) { try { localStorage.setItem('cm_cola', JSON.stringify(c)); return true; } catch (e) { return false; } }
+function achicarFoto(f) { return new Promise(function (ok, mal) { var u = URL.createObjectURL(f), im = new Image(); im.onload = function () { var m = 1024, w = im.width, h = im.height, k = Math.min(1, m / Math.max(w, h)); var cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k); cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); URL.revokeObjectURL(u); ok(cv.toDataURL('image/jpeg', 0.6)); }; im.onerror = mal; im.src = u; }); }
+function fotoUrl(x) { return String(x).indexOf('data:') === 0 ? x : 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(x) + '&sz=w800'; }
 var enviando = false;
 function enviarCola() {
   var c = leerCola();
@@ -326,12 +335,12 @@ function armarRegistro() {
   var d = durMin(S.ini, S.ter);
   var reps = S.ans === 'si' ? S.reps.map(function (r) { return { comp: r.comp.trim(), np: r.np.trim(), cant: String(r.cant).trim(), pos: r.pos.trim() }; }) : [];
   return {
-    fecha: y + '-' + pad(m + 1) + '-' + pad(S.picked), fechaTer: y + '-' + pad(m + 1) + '-' + pad(S.pickedTer), turno: S.turno === 'dia' ? 'Día' : 'Noche',
+    fecha: y + '-' + pad(m + 1) + '-' + pad(S.picked), fechaTer: y + '-' + pad(m + 1) + '-' + pad(S.pickedTer), turno: S.turno === 'dia' ? 'Día' : 'Noche', grupo: S.grupo,
     nombres: S.names.map(function (n) { return n.trim(); }).filter(Boolean).join(', '),
-    caex: S.caex, hor: S.hor, ini: S.ini, ter: S.ter,
+    caex: caexSel().map(function (x) { return x === 'Otros' ? 'Otros: ' + S.caexOtro.trim() : x; }).join(', '), hor: S.hor, ini: S.ini, ter: S.ter,
     horas: d == null ? '' : Math.round(d / 60 * 100) / 100,
     tipo: S.tipos.map(function (t) { return t === 'PM' ? 'PM ' + S.pm : t; }).join(', '),
-    det: S.dets.join(', '), sis: S.sel.join(', '), trab: S.trab.trim(),
+    det: S.dets.join(', '), sis: S.sel.map(function (x) { return x === 'Otro' ? 'Otro: ' + S.sisOtro.trim() : x; }).join(', '), fotos: S.fotos.slice(), trab: S.trab.trim(),
     detalle: Object.keys(TXT).filter(has).map(function (t) { return TXT[t].res + ': ' + (S.dt[t] || '').trim(); }).join(' · '),
     ab: has('Abastecimiento') ? FL.filter(function (f) { return Number(S.ab[f]) > 0; }).map(function (f) { return f + ': ' + S.ab[f] + ' L'; }).concat(S.ab.aire ? ['Aire de partida'] : []).join(' · ') : '',
     kg: has('Engrase') ? S.kg : '',
@@ -379,10 +388,11 @@ function paso1(bad) {
     '<div>' + lbl('Nombre de mantenedores', bad(noN)) +
       '<button type="button" class="tbtn' + (bad(noN) ? ' err' : '') + '" onclick="A.openNames()"><span class="t">' + ICO.users + (llenos.length ? 'Editar nombres' : 'Agregar nombres') + '</span><span class="bigv" style="color:' + (llenos.length ? '#1B1D1F' : '#8A9096') + '">' + llenos.length + '</span></button>' +
       '<div class="hint" style="margin-top:6px">' + (llenos.length ? esc(llenos.join(', ')) : 'Toca para abrir las 10 casillas') + '</div></div>' +
-    '<div>' + lbl('N° de CAEX', bad(!S.caex)) + '<div class="hint" style="margin:-2px 0 8px">Puedes marcar más de uno</div><div class="g2' + (bad(!S.caex) ? ' gerr' : '') + '">' + S.caexList.concat(['Otros']).map(function (c) { var on = caexSel().indexOf(c) >= 0; return '<button type="button" class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="A.caex(\'' + esc(c) + '\')">' + (on ? '☑ ' : '☐ ') + esc(nomC(c)) + '</button>'; }).join('') + '</div></div>' +
+    '<div>' + lbl('N° de CAEX', bad(!S.caex)) + '<div class="hint" style="margin:-2px 0 8px">Puedes marcar más de uno</div><div class="g2' + (bad(!S.caex) ? ' gerr' : '') + '">' + S.caexList.concat(['Otros']).map(function (c) { var on = caexSel().indexOf(c) >= 0; return '<button type="button" class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="A.caex(\'' + esc(c) + '\')">' + (on ? '☑ ' : '☐ ') + esc(nomC(c)) + '</button>'; }).join('') + '</div>' + (caexSel().indexOf('Otros') >= 0 ? '<input class="fld' + (bad(!S.caexOtro.trim()) ? ' err' : '') + '" style="margin-top:10px" aria-label="Qué equipo es" placeholder="Escribe qué equipo es (Ej: bulldozer D10)" value="' + esc(S.caexOtro) + '" oninput="A.caexOtro(this.value)">' : '') + '</div>' +
     '<div>' + lbl('Horómetro' + (soloOtros() ? ' (opcional)' : ''), bad(!S.hor && !soloOtros()), 'hor') + '<div style="display:flex;align-items:center;gap:10px"><input id="hor" class="fld' + (bad(!S.hor && !soloOtros()) ? ' err' : '') + '" type="number" inputmode="decimal" placeholder="Ej: 45210" value="' + esc(S.hor) + '" oninput="A.hor(this.value)"><div style="font-size:18px;font-weight:600;color:#4A4F55">hrs</div></div></div>' +
     '<div>' + lbl('Hora de inicio', bad(!S.ini)) + '<button type="button" class="tbtn' + (bad(!S.ini) ? ' err' : '') + '" onclick="A.openPk(\'ini\')"><span class="t">' + ICO.clock + 'Elegir hora de inicio</span><span class="bigv" style="color:' + (S.ini ? '#1B1D1F' : '#8A9096') + '">' + (S.ini || '--:--') + '</span></button><div class="hint" style="margin-top:6px">Toca para abrir el reloj</div></div>' +
-    '<div>' + lbl('Turno', bad(!S.turno)) + '<div class="g2' + (bad(!S.turno) ? ' gerr' : '') + '" style="gap:10px"><button type="button" class="tog' + (S.turno === 'dia' ? ' on' : '') + '" onclick="A.turno(\'dia\')">☀️ Día</button><button type="button" class="tog' + (S.turno === 'noche' ? ' on' : '') + '" onclick="A.turno(\'noche\')">🌙 Noche</button></div></div>' + '</div><div class="foot">' + nextBtn(2) + '</div>';
+    '<div>' + lbl('Turno', bad(!S.turno)) + '<div class="g2' + (bad(!S.turno) ? ' gerr' : '') + '" style="gap:10px"><button type="button" class="tog' + (S.turno === 'dia' ? ' on' : '') + '" onclick="A.turno(\'dia\')">☀️ Día</button><button type="button" class="tog' + (S.turno === 'noche' ? ' on' : '') + '" onclick="A.turno(\'noche\')">🌙 Noche</button></div></div>' +
+    '<div>' + lbl('Grupo de turno', bad(!S.grupo)) + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" class="' + (bad(!S.grupo) ? 'gerr' : '') + '">' + ['G1','G2','G3','G4'].map(function (g) { return '<button type="button" class="tog' + (S.grupo === g ? ' on' : '') + '" aria-pressed="' + (S.grupo === g) + '" onclick="A.grupo(\'' + g + '\')">' + g + '</button>'; }).join('') + '</div></div>' + '</div><div class="foot">' + nextBtn(2) + '</div>';
 }
 
 function paso2(bad) {
@@ -402,8 +412,9 @@ function paso2(bad) {
   return '<div class="body" style="gap:22px">' +
     '<div>' + lbl('Tipo de trabajo', bad(!S.tipos.length)) + '<div class="hint" style="margin:-2px 0 8px">Puedes marcar más de uno</div><div class="g2' + (bad(!S.tipos.length) ? ' gerr' : '') + '">' + tipos + '</div>' + sums + '</div>' +
     '<div>' + lbl('Tipo de detención', bad(!S.dets.length)) + '<div class="hint" style="margin:-2px 0 8px">Puedes marcar más de uno</div><div class="g3' + (bad(!S.dets.length) ? ' gerr' : '') + '">' + dets + '</div></div>' +
-    '<div><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div class="lbl' + (bad(!nSel) ? ' lerr' : '') + '" style="margin-bottom:0">Sistema con falla</div><div style="font-size:14px;font-weight:600;color:#4A4F55">' + (nSel ? nSel + (nSel === 1 ? ' marcado' : ' marcados') : '') + '</div></div><div class="hint" style="margin-bottom:8px">Puedes marcar más de uno</div><div class="g2' + (bad(!nSel) ? ' gerr' : '') + '">' + sis + '</div></div>' +
+    '<div><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div class="lbl' + (bad(!nSel) ? ' lerr' : '') + '" style="margin-bottom:0">Sistema con falla</div><div style="font-size:14px;font-weight:600;color:#4A4F55">' + (nSel ? nSel + (nSel === 1 ? ' marcado' : ' marcados') : '') + '</div></div><div class="hint" style="margin-bottom:8px">Puedes marcar más de uno</div><div class="g2' + (bad(!nSel) ? ' gerr' : '') + '">' + sis + '</div>' + (S.sel.indexOf('Otro') >= 0 ? '<input class="fld' + (bad(!S.sisOtro.trim()) ? ' err' : '') + '" style="margin-top:10px" aria-label="Cuál es el otro sistema" placeholder="Escribe cuál es el otro sistema" value="' + esc(S.sisOtro) + '" oninput="A.sisOtro(this.value)">' : '') + '</div>' +
     '<div>' + lbl('Trabajo realizado', bad(!S.trab.trim()), 'trab') + '<textarea id="trab" rows="3" class="ta' + (bad(!S.trab.trim()) ? ' err' : '') + '" placeholder="Ej: cambio de pastillas freno trasero lado izquierdo" oninput="A.trab(this.value)">' + esc(S.trab) + '</textarea></div>' +
+    '<div>' + lbl('Fotografías') + '<div class="hint" style="margin:-2px 0 8px">Opcional · hasta 4 fotos (' + S.fotos.length + ' de 4)</div><div class="g2" style="gap:10px">' + S.fotos.map(function (f, i) { return '<div style="position:relative"><img src="' + f + '" alt="Foto ' + (i + 1) + '" style="width:100%;height:120px;object-fit:cover;border-radius:10px;border:2px solid #C9CCCF;display:block"><button type="button" onclick="A.delFoto(' + i + ')" aria-label="Quitar foto ' + (i + 1) + '" style="position:absolute;top:6px;right:6px;width:34px;height:34px;border-radius:50%;border:none;background:#B3261E;color:#FFF;font-size:18px;font-weight:700">✕</button></div>'; }).join('') + (S.fotos.length < 4 ? '<label class="chip" style="height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-style:dashed"><span style="font-size:30px">📷</span><span>Agregar foto</span><input type="file" accept="image/*" style="display:none" onchange="A.foto(this)"></label>' : '') + '</div></div>' +
     '</div><div class="foot"><div class="row2"><button type="button" class="back" onclick="A.go(1)">Atrás</button>' + nextBtn(3) + '</div></div>';
 }
 
@@ -465,7 +476,7 @@ function historial() {
     '<div>' + lbl('Fecha', false, 'fdate') + '<div style="display:flex;gap:8px"><input id="fdate" class="fld" type="date" value="' + esc(S.fDate) + '" onchange="A.fDate(this.value)"><button type="button" class="tog' + (S.fDate ? '' : ' on') + '" onclick="A.allDates()" style="flex:none;padding:0 14px;height:52px;font-size:17px">Todas</button></div><div class="hint" style="margin-top:6px">Puedes filtrar por CAEX, por fecha o por los dos</div></div></div>';
   if (S.hist === null) return h + '<div class="hint" style="text-align:center">Cargando registros...</div></div>';
   if (S.histErr) h += '<div class="alert">' + esc(S.histErr) + '</div>';
-  var res = S.hist.filter(function (r) { return (!S.fCaex || String(r.caex).split(', ').indexOf(S.fCaex) >= 0) && (!S.fDate || r.fecha === S.fDate); })
+  var res = S.hist.filter(function (r) { return (!S.fCaex || String(r.caex).split(', ').some(function (x) { return x === S.fCaex || (S.fCaex === 'Otros' && x.indexOf('Otros') === 0); })) && (!S.fDate || r.fecha === S.fDate); })
     .sort(function (a, b) { return (b.fecha + b.ini).localeCompare(a.fecha + a.ini); });
   var nm = Object.keys(S.marcados).length, ni = Object.keys(S.mImp).length, ne = Object.keys(S.mEnv).length;
   if (S.env) {
@@ -539,8 +550,9 @@ function tarjeta(r) {
   var op = r.est === 'Operativo';
   return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="big" style="font-size:22px">' + esc(nomC(r.caex)) + ' · ' + fmtF(r.fecha) + '</div><span class="badge ' + (op ? 'b-op' : 'b-fs') + '">' + esc(r.est) + '</span></div>' +
       '<div class="g3" style="gap:6px;background:#F2F2EF;border-radius:8px;padding:8px 10px"><div><div class="small">Inicio</div><div style="font-size:19px;font-weight:700">' + esc(r.ini || '--:--') + '</div></div><div><div class="small">Término</div><div style="font-size:19px;font-weight:700">' + esc(r.ter || '--:--') + '</div></div><div><div class="small">Duración</div><div style="font-size:19px;font-weight:700">' + durTxt(r.ini, r.ter) + '</div></div></div>' +
-      it('Horómetro', r.hor ? r.hor + ' hrs' : '') + it('Trabajo', r.tipo) + it('Detencion', r.det) + it('Sistemas', r.sis) + it('Trabajo realizado', r.trab) +
-      it('Repuestos', r.reps || 'Sin cambio de componente') + it('Abastecimiento', r.ab) + it('Detalle', r.detalle) + it('Grasa', r.kg ? r.kg + ' kg' : '') + it('Mantenedores', r.nombres) + it('Observaciones', r.obs);
+      it('Turno', [r.turno, r.grupo].filter(Boolean).join(' · ')) + it('Horómetro', r.hor ? r.hor + ' hrs' : '') + it('Trabajo', r.tipo) + it('Detencion', r.det) + it('Sistemas', r.sis) + it('Trabajo realizado', r.trab) +
+      it('Repuestos', r.reps || 'Sin cambio de componente') + it('Abastecimiento', r.ab) + it('Detalle', r.detalle) + it('Grasa', r.kg ? r.kg + ' kg' : '') + it('Mantenedores', r.nombres) + it('Observaciones', r.obs) +
+      (r.fotos && r.fotos.length ? '<div><div class="small">Fotografías</div><div class="g2" style="gap:6px;margin-top:4px">' + r.fotos.map(function (x) { return '<img src="' + esc(fotoUrl(x)) + '" alt="Foto del trabajo" style="width:100%;height:140px;object-fit:cover;border-radius:8px;display:block">'; }).join('') + '</div></div>' : '');
 }
 
 function dlg(k, h, body, foot) {
