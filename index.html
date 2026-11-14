@@ -526,7 +526,7 @@ function historial() {
   if (S.hist === null) return h + '<div class="hint" style="text-align:center">Cargando registros...</div></div>';
   if (S.histErr) h += '<div class="alert">' + esc(S.histErr) + '</div>';
   var res = S.hist.filter(function (r) { return (!S.fCaex || String(r.caex).split(', ').some(function (x) { return x === S.fCaex || (S.fCaex === 'Otros' && x.indexOf('Otros') === 0); })) && (!S.fDate || r.fecha === S.fDate); })
-    .sort(function (a, b) { return (b.fecha + b.ini).localeCompare(a.fecha + a.ini); });
+    .sort(function (a, b) { return (parseFloat(b.reg) || 0) - (parseFloat(a.reg) || 0) || (b.fecha + b.ini).localeCompare(a.fecha + a.ini); });
   var nm = Object.keys(S.marcados).length, ni = Object.keys(S.mImp).length, ne = Object.keys(S.mEnv).length;
   if (S.env) {
     h += '<div style="display:flex;gap:8px"><button type="button" class="next" style="flex:1;background:#1F6B45;color:#F2B705" onclick="A.modoEnv()">✕ Cancelar</button>' +
@@ -613,13 +613,14 @@ function enviarWsp() {
     }).catch(function (e) { if (e && e.name !== 'AbortError') alert('No se pudo enviar: ' + e); });
 }
 
+function fmtReg(x) { var n = parseFloat(x); if (!n || n < 1e12) return ''; var d = new Date(n); return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
 function tarjeta(r) {
   var ew = leerWsp()[r.reg];
   var it = function (k, v) { return v ? '<div><div class="small">' + k + '</div><div style="font-size:16px;white-space:pre-line">' + esc(v) + '</div></div>' : ''; };
   var op = r.est === 'Operativo';
   return (ew ? '<div class="wspok">✅ Enviado por WhatsApp · ' + esc(ew) + '</div>' : '') + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="big" style="font-size:22px">' + esc(nomC(r.caex)) + ' · ' + fmtF(r.fecha) + '</div><span class="badge ' + (op ? 'b-op' : 'b-fs') + '">' + esc(r.est) + '</span></div>' +
       '<div class="g3" style="gap:6px;background:#F2F2EF;border-radius:8px;padding:8px 10px"><div><div class="small">Inicio</div><div style="font-size:19px;font-weight:700">' + esc(r.ini || '--:--') + '</div></div><div><div class="small">Término</div><div style="font-size:19px;font-weight:700">' + esc(r.ter || '--:--') + '</div></div><div><div class="small">Duración</div><div style="font-size:19px;font-weight:700">' + durTxt(r.ini, r.ter) + '</div></div></div>' +
-      it('Turno', [r.turno, r.grupo].filter(Boolean).join(' · ')) + it('Horómetro', r.hor ? r.hor + ' hrs' : '') + it('Trabajo', r.tipo) + it('Detencion', r.det) + it('Sistemas', r.sis) + it('Trabajo realizado', r.trab) +
+      it('Enviado por el mecánico', fmtReg(r.reg)) + it('Turno', [r.turno, r.grupo].filter(Boolean).join(' · ')) + it('Horómetro', r.hor ? r.hor + ' hrs' : '') + it('Trabajo', r.tipo) + it('Detencion', r.det) + it('Sistemas', r.sis) + it('Trabajo realizado', r.trab) +
       it('Repuestos', r.reps || 'Sin cambio de componente') + it('Abastecimiento', r.ab) + it('Detalle', r.detalle) + it('Grasa', r.kg ? r.kg + ' kg' : '') + it('Mantenedores', r.nombres) + it('Observaciones', r.obs) +
       (r.fotosPend && r.fotosPend.length ? '<div><div class="small">Fotos de lo pendiente</div><div class="g2" style="gap:6px;margin-top:4px">' + r.fotosPend.map(function (x) { return '<img src="' + esc(fotoUrl(x)) + '" alt="Foto de lo pendiente" style="width:100%;height:140px;object-fit:cover;border-radius:8px;display:block">'; }).join('') + '</div></div>' : '') +
       (r.fotos && r.fotos.length ? '<div><div class="small">Fotografías</div><div class="g2" style="gap:6px;margin-top:4px">' + r.fotos.map(function (x) { return '<img src="' + esc(fotoUrl(x)) + '" alt="Foto del trabajo" style="width:100%;height:140px;object-fit:cover;border-radius:8px;display:block">'; }).join('') + '</div></div>' : '');
