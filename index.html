@@ -531,7 +531,8 @@ function historial() {
   if (S.env) {
     h += '<div style="display:flex;gap:8px"><button type="button" class="next" style="flex:1;background:#1F6B45;color:#F2B705" onclick="A.modoEnv()">✕ Cancelar</button>' +
       '<button type="button" class="next" style="flex:1;background:#25A35A;color:#fff' + (ne ? '' : ';opacity:.5') + '" onclick="A.enviarWsp()">WhatsApp (' + ne + ')</button></div>' +
-      '<div class="hint">Marca con ✔ los trabajos y toca WhatsApp.</div>';
+      '<button type="button" class="back" style="width:100%' + (ne ? '' : ';opacity:.5') + '" onclick="marcarSoloWsp()">✔ Marcar como ya enviados (' + ne + ')</button>' +
+      '<div class="hint">Marca con ✔ los trabajos y toca WhatsApp. Si ya los habías enviado antes, toca "Marcar como ya enviados".</div>';
   } else if (S.impr) {
     h += '<div style="display:flex;gap:8px"><button type="button" class="next" style="flex:1;background:#1E5BB8;color:#fff" onclick="A.modoImpr()">✕ Cancelar</button>' +
       '<button type="button" class="next" style="flex:1;background:#1E5BB8;color:#fff' + (ni ? '' : ';opacity:.5') + '" onclick="A.imprimir()">🖨️ Imprimir (' + ni + ')</button></div>' +
@@ -584,6 +585,7 @@ function imagenTrabajo(r) {
 function leerWsp() { try { return JSON.parse(localStorage.getItem('cm_wsp') || '{}'); } catch (e) { return {}; } }
 function marcarWsp(lista) { var m = leerWsp(), t = new Date(), f = ('0' + t.getDate()).slice(-2) + '/' + ('0' + (t.getMonth() + 1)).slice(-2) + ' ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
   lista.forEach(function (r) { m[r.reg] = f; }); try { localStorage.setItem('cm_wsp', JSON.stringify(m)); } catch (e) {} }
+function marcarSoloWsp() { var lista = (S.hist || []).filter(function (r) { return S.mEnv[r.reg]; }); if (!lista.length) return alert('Marca al menos un trabajo'); marcarWsp(lista); set({ env: false, mEnv: {} }); }
 function enviarWsp() {
   var lista = (S.hist || []).filter(function (r) { return S.mEnv[r.reg]; });
   if (!lista.length) return alert('Marca al menos un trabajo');
