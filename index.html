@@ -73,6 +73,7 @@ button{font-family:inherit}
 .banner{border:2px solid #C62828;background:#FFF5F5;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
 .banner .r{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:15px;color:#8E1B14}
 .banner button{flex:none;height:44px;padding:0 12px;border:2px solid #C62828;border-radius:8px;background:#FFF;color:#8E1B14;font-size:15px;font-weight:700;cursor:pointer}
+.wspok{background:#25A35A;color:#fff;font-weight:800;font-size:15px;padding:8px 12px;border-radius:10px;text-align:center}
 .badge{flex:none;padding:4px 10px;border-radius:999px;font-size:14px;font-weight:700}
 .b-op{background:#E3F1E8;color:#1F6B45}.b-fs{background:#FBE9E1;color:#8F330A}
 .clock{position:relative;width:280px;height:280px;border-radius:50%;background:#F2F2EF}
@@ -82,7 +83,7 @@ button{font-family:inherit}
 .seg.on{color:#F2B705}
 img.hero{display:block;width:100%;aspect-ratio:1220/742;object-fit:cover;border-radius:12px}
 #impresion{display:none}
-@media print{
+@media print{.wspok{display:none!important}
   body{background:#FFF}
   #app{display:none!important}
   #impresion{display:block!important}
@@ -545,7 +546,7 @@ function historial() {
   if (!res.length) h += '<div style="background:#FFF;border:2px dashed #C9CCCF;border-radius:12px;padding:24px;text-align:center;font-size:16px;color:#4A4F55">No hay trabajos registrados con ese filtro.</div>';
   res.forEach(function (r) {
     h += '<div class="card">' + (S.elim ? '<label style="display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;color:#B3261E;cursor:pointer"><input type="checkbox" value="' + esc(r.reg) + '" style="width:28px;height:28px" ' + (S.marcados[r.reg] ? 'checked' : '') + ' onchange="A.marcar(this.value,this.checked)"> Marcar para borrar</label>' : '') +
-      (S.env ? '<label style="display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;color:#1F6B45;cursor:pointer"><input type="checkbox" value="' + esc(r.reg) + '" style="width:28px;height:28px;accent-color:#1F6B45" ' + (S.mEnv[r.reg] ? 'checked' : '') + ' onchange="A.marcarEnv(this.value,this.checked)"> Marcar para enviar</label>' : '') +
+      (S.env ? '<label style="display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;color:#1F6B45;cursor:pointer"><input type="checkbox" value="' + esc(r.reg) + '" style="width:28px;height:28px;accent-color:#1F6B45" ' + (S.mEnv[r.reg] ? 'checked' : '') + ' onchange="A.marcarEnv(this.value,this.checked)"> Marcar para enviar' + (leerWsp()[r.reg] ? ' <span style="color:#25A35A">(ya enviado)</span>' : '') + '</label>' : '') +
       (S.impr ? '<label style="display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;color:#1E5BB8;cursor:pointer"><input type="checkbox" value="' + esc(r.reg) + '" style="width:28px;height:28px;accent-color:#1E5BB8" ' + (S.mImp[r.reg] ? 'checked' : '') + ' onchange="A.marcarImp(this.value,this.checked)"> Marcar para imprimir</label>' : '') +
       tarjeta(r) + '</div>';
   });
@@ -579,6 +580,10 @@ function imagenTrabajo(r) {
   g.strokeStyle = AM; g.lineWidth = 6; g.strokeRect(3, 3, W - 6, cv.height - 6);
   return cv;
 }
+/* ====== Marca de trabajos ya enviados por WhatsApp (se guarda en este celular) ====== */
+function leerWsp() { try { return JSON.parse(localStorage.getItem('cm_wsp') || '{}'); } catch (e) { return {}; } }
+function marcarWsp(lista) { var m = leerWsp(), t = new Date(), f = ('0' + t.getDate()).slice(-2) + '/' + ('0' + (t.getMonth() + 1)).slice(-2) + ' ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+  lista.forEach(function (r) { m[r.reg] = f; }); try { localStorage.setItem('cm_wsp', JSON.stringify(m)); } catch (e) {} }
 function enviarWsp() {
   var lista = (S.hist || []).filter(function (r) { return S.mEnv[r.reg]; });
   if (!lista.length) return alert('Marca al menos un trabajo');
@@ -599,17 +604,18 @@ function enviarWsp() {
       var files = [].concat.apply([], grupos).filter(Boolean);
       if (faltan) alert(faltan + (faltan === 1 ? ' foto no se pudo bajar' : ' fotos no se pudieron bajar') + ' (sin señal). Se envía lo demás.');
       if (navigator.canShare && navigator.canShare({ files: files })) {
-        return navigator.share({ files: files, title: asunto, text: asunto }).then(function () { set({ env: false, mEnv: {} }); });
+        return navigator.share({ files: files, title: asunto, text: asunto }).then(function () { marcarWsp(lista); set({ env: false, mEnv: {} }); });
       }
       files.forEach(function (f) { var a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); });
-      alert('Este navegador no permite compartir directo. Las imágenes se descargaron; adjúntalas en WhatsApp.');
+      marcarWsp(lista); alert('Este navegador no permite compartir directo. Las imágenes se descargaron; adjúntalas en WhatsApp.'); set({ env: false, mEnv: {} });
     }).catch(function (e) { if (e && e.name !== 'AbortError') alert('No se pudo enviar: ' + e); });
 }
 
 function tarjeta(r) {
+  var ew = leerWsp()[r.reg];
   var it = function (k, v) { return v ? '<div><div class="small">' + k + '</div><div style="font-size:16px;white-space:pre-line">' + esc(v) + '</div></div>' : ''; };
   var op = r.est === 'Operativo';
-  return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="big" style="font-size:22px">' + esc(nomC(r.caex)) + ' · ' + fmtF(r.fecha) + '</div><span class="badge ' + (op ? 'b-op' : 'b-fs') + '">' + esc(r.est) + '</span></div>' +
+  return (ew ? '<div class="wspok">✅ Enviado por WhatsApp · ' + esc(ew) + '</div>' : '') + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="big" style="font-size:22px">' + esc(nomC(r.caex)) + ' · ' + fmtF(r.fecha) + '</div><span class="badge ' + (op ? 'b-op' : 'b-fs') + '">' + esc(r.est) + '</span></div>' +
       '<div class="g3" style="gap:6px;background:#F2F2EF;border-radius:8px;padding:8px 10px"><div><div class="small">Inicio</div><div style="font-size:19px;font-weight:700">' + esc(r.ini || '--:--') + '</div></div><div><div class="small">Término</div><div style="font-size:19px;font-weight:700">' + esc(r.ter || '--:--') + '</div></div><div><div class="small">Duración</div><div style="font-size:19px;font-weight:700">' + durTxt(r.ini, r.ter) + '</div></div></div>' +
       it('Turno', [r.turno, r.grupo].filter(Boolean).join(' · ')) + it('Horómetro', r.hor ? r.hor + ' hrs' : '') + it('Trabajo', r.tipo) + it('Detencion', r.det) + it('Sistemas', r.sis) + it('Trabajo realizado', r.trab) +
       it('Repuestos', r.reps || 'Sin cambio de componente') + it('Abastecimiento', r.ab) + it('Detalle', r.detalle) + it('Grasa', r.kg ? r.kg + ' kg' : '') + it('Mantenedores', r.nombres) + it('Observaciones', r.obs) +
