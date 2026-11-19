@@ -170,6 +170,18 @@ function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replac
 function vacios() { return ['','','','','','','','','','']; }
 function repVacio() { return { comp: '', np: '', cant: '', pos: '' }; }
 function toMin(s) { return parseInt(s.slice(0,2),10) * 60 + parseInt(s.slice(3),10); }
+function turnoDe(r) {
+  var f = r.fecha, ini = r.ini;
+  if (!ini || !/^\d{1,2}:\d{2}$/.test(ini)) return { t: String(r.turno).indexOf('Noche') === 0 ? 'noche' : 'dia', f: f };
+  var a = toMin(ini), d = durMin(ini, r.ter); if (d == null) d = 0;
+  var nd = 0, nn = 0, primD = null, primN = null;
+  for (var m = a; m <= a + d; m += 5) { var x = ((m % 1440) + 1440) % 1440; if (x >= 480 && x < 1200) { nd++; if (primD === null) primD = m; } else { nn++; if (primN === null) primN = m; } }
+  var noche = nn > nd || (nn === nd && primN !== null && primN === a);
+  var mm = noche ? primN : primD, dia = Math.floor(mm / 1440);
+  if (noche && (mm % 1440) < 480) dia -= 1;
+  var dt = new Date(f + 'T12:00:00'); dt.setDate(dt.getDate() + dia);
+  return { t: noche ? 'noche' : 'dia', f: dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) };
+}
 function durMin(a, b) { if (!a || !b) return null; var d = toMin(b) - toMin(a); if (d < 0) d += 1440; return d; }
 function durTxt(a, b) { var d = durMin(a, b); return d == null ? '--:--' : Math.floor(d/60) + ':' + pad(d%60); }
 
@@ -182,13 +194,23 @@ function nuevo() {
     elim: false, marcados: {}, impr: false, mImp: {}, env: false, mEnv: {}, tipos: [], pm: '', dets: [], dt: {}, ab: {}, kg: '', sel: [], trab: '', ans: '', reps: [repVacio()], turno: '', grupo: '', pickedTer: NOW.getDate(),
     ter: '', est: '', obs: '', show: false, sent: false, sending: false, sendErr: '',
     modal: null, tmp: null, err: false, pk: null,
-    caexList: S ? S.caexList : CAEX_DEF.slice(), hist: S ? S.hist : null, histErr: '', fCaex: S ? S.fCaex : '', fDate: S ? S.fDate : ''
+    caexList: S ? S.caexList : CAEX_DEF.slice(), hist: S ? S.hist : null, histErr: '', fCaex: S ? S.fCaex : '', fDate: S ? S.fDate : '', fTurno: S ? S.fTurno : ''
   };
   return base;
 }
 S = nuevo();
 try { localStorage.removeItem('cm_nombres'); } catch (e) {}
 
+function miCel() { var d = ''; try { d = localStorage.getItem('cm_dev') || ''; if (!d) { d = 'C' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem('cm_dev', d); } } catch (e) {} return d; }
+var CAMPOS_ED = ['picked','pickedTer','names','caex','caexOtro','sisOtro','hors','hor','ini','ter','tipos','pm','dets','dt','ab','kg','sel','trab','ans','reps','turno','grupo','est','obs'];
+function leerMios() { try { return JSON.parse(localStorage.getItem('cm_mios') || '{}'); } catch (e) { return {}; } }
+function claveReg(g) { var c0 = String(g.caex).split(', ')[0]; return [c0, g.fecha, g.ini, g.ter, g.nombres].join('|'); }
+function guardarMio(reg) { var m = leerMios(), snap = {}, lim = Date.now() - 40 * 864e5;
+  CAMPOS_ED.forEach(function (k) { snap[k] = JSON.parse(JSON.stringify(S[k] === undefined ? null : S[k])); });
+  m[claveReg(reg)] = { s: snap, y: S.edY != null ? S.edY : NOW.getFullYear(), mo: S.edM != null ? S.edM : NOW.getMonth(), t: Date.now() };
+  Object.keys(m).forEach(function (k) { if (m[k].t < lim) delete m[k]; });
+  try { localStorage.setItem('cm_mios', JSON.stringify(m)); } catch (e) {} }
+function mioDe(r) { if (!r.dev || r.dev !== miCel()) return null; var m = leerMios(); return m[[String(r.caex), r.fecha, r.ini, r.ter, r.nombres].join('|')] || null; }
 function caexSel() { return S.caex ? S.caex.split(', ') : []; }
 function nomC(c) { return String(c || '').split(', ').map(function (x) { return x.indexOf('Otros') === 0 ? x : 'CAEX ' + x; }).join(', '); }
 function caexReales() { return caexSel().filter(function (x) { return x !== 'Otros'; }); }
@@ -229,7 +251,16 @@ function faltas() {
 
 // ---------- acciones ----------
 var A = {
-  tab: function (v) { set({ view: v }); if (v === 'hist') cargarHist(); },
+  tab: function (v) { if (S.edit && v === 'hist') { S = nuevo(); } set({ view: v }); if (v === 'hist') cargarHist(); },
+  editar: function (reg) {
+    var r = (S.hist || []).filter(function (x) { return x.reg === reg; })[0], mi = r && mioDe(r);
+    if (!mi) return alert('Este trabajo solo se puede editar desde el celular que lo envió.');
+    if (!confirm('¿Editar este trabajo? Al enviar, se reemplaza el registro anterior.')) return;
+    var n = nuevo(); CAMPOS_ED.forEach(function (k) { if (mi.s[k] !== null && mi.s[k] !== undefined) n[k] = JSON.parse(JSON.stringify(mi.s[k])); });
+    n.view = 'form'; n.step = 1; n.edY = mi.y; n.edM = mi.mo; n.edit = { reg: r.reg, fotos: r.fotos || [], fotosPend: r.fotosPend || [] };
+    S = n; render(); window.scrollTo(0, 0);
+  },
+  cancelarEd: function () { if (confirm('¿Salir sin guardar los cambios?')) { S = nuevo(); S.view = 'hist'; render(); } },
   modoElim: function () { set({ elim: !S.elim, marcados: {}, impr: false, mImp: {}, env: false, mEnv: {} }); },
   modoEnv: function () { set({ env: !S.env, mEnv: {}, elim: false, marcados: {}, impr: false, mImp: {} }); },
   marcarEnv: function (reg, on) { if (on) S.mEnv[reg] = 1; else delete S.mEnv[reg]; set({}); },
@@ -331,21 +362,25 @@ var A = {
     var f = faltas();
     if (!f.every(function (x) { return !x.length; })) return set({ show: true });
     var c = leerCola();
-    c.push({ uid: Date.now() + '-' + Math.random().toString(36).slice(2, 8), registro: armarRegistro() });
+    var reg = armarRegistro(), item = { uid: Date.now() + '-' + Math.random().toString(36).slice(2, 8), registro: reg };
+    if (S.edit) { item.accion = 'editar'; item.reg = S.edit.reg; item.dev = miCel(); item.fotosVie = S.edit.fotos || []; item.pendVie = S.edit.fotosPend || []; }
+    c.push(item);
+    guardarMio(reg);
     if (!guardarCola(c)) return alert('La memoria del celular para trabajos pendientes está llena. Conéctate a internet para que se envíen los pendientes y vuelve a intentar.');
-    set({ sent: true, sending: false, sendErr: '' }); window.scrollTo(0, 0);
+    set({ sent: true, sending: false, sendErr: '', edit: null, edY: null, edM: null }); window.scrollTo(0, 0);
     enviarCola();
   },
   reset: function () { S = nuevo(); render(); window.scrollTo(0, 0); },
   fCaex: function (v) { set({ fCaex: v }); },
   fDate: function (v) { set({ fDate: v }); },
-  allDates: function () { set({ fDate: '' }); }
+  allDates: function () { set({ fDate: '' }); },
+  fTurno: function (v) { set({ fTurno: S.fTurno === v ? '' : v }); }
 };
 
 
 var API = 'https://script.google.com/macros/s/AKfycbyPNY47CvsAlkMhfeE7mVvMN4mnZ1TxheDC_BO56sz_PQHgXt8g3ysJ9DJ51Z_yufKTyg/exec';
 function api(datos) {
-  var c = new AbortController(); var t = setTimeout(function () { c.abort(); }, 25000);
+  var c = new AbortController(); var t = setTimeout(function () { c.abort(); }, (datos.accion === 'guardar' || datos.accion === 'editar') ? 90000 : 25000);
   var op = datos.metodo === 'GET'
     ? fetch(API + '?accion=' + encodeURIComponent(datos.accion) + '&t=' + Date.now(), { signal: c.signal })
     : fetch(API, { method: 'POST', body: JSON.stringify(datos), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: c.signal });
@@ -361,17 +396,21 @@ function enviarCola() {
   if (enviando || !c.length) { render(); return; }
   enviando = true;
   var it = c[0];
-  api({ accion: 'guardar', uid: it.uid, registro: it.registro }).then(function () {
+  var yaEsta = function (l) { var g = it.registro, c0 = String(g.caex).split(', ')[0];
+    return (l || []).some(function (r) { return String(r.caex) === c0 && r.fecha === g.fecha && r.ini === g.ini && r.ter === g.ter && r.nombres === g.nombres && String(r.hor) === String((g.hors && g.hors[c0]) || g.hor); }); };
+  var revisar = it.intento && it.accion !== 'editar' ? api({ metodo: 'GET', accion: 'historial' }).then(function (l) { return yaEsta(l); }).catch(function () { return false; }) : Promise.resolve(false);
+  revisar.then(function (esta) { if (esta) return 'ya'; return it.accion === 'editar' ? api({ accion: 'editar', uid: it.uid, reg: it.reg, dev: it.dev, fotosVie: it.fotosVie, pendVie: it.pendVie, registro: it.registro }) : api({ accion: 'guardar', uid: it.uid, registro: it.registro }); }).then(function (res) {
+    if (typeof res === 'string' && res !== 'ok' && res !== 'ya') alert(res);
     guardarCola(leerCola().filter(function (x) { return x.uid !== it.uid; }));
     S.hist = null; enviando = false; enviarCola();
-  }).catch(function () { enviando = false; render(); });
+  }).catch(function () { var q = leerCola(); q.forEach(function (x) { if (x.uid === it.uid) x.intento = 1; }); guardarCola(q); enviando = false; render(); });
 }
 window.addEventListener('online', enviarCola);
 setInterval(enviarCola, 30000);
 document.addEventListener('visibilitychange', function () { if (!document.hidden) enviarCola(); });
 
 function armarRegistro() {
-  var y = NOW.getFullYear(), m = NOW.getMonth();
+  var y = S.edY != null ? S.edY : NOW.getFullYear(), m = S.edM != null ? S.edM : NOW.getMonth();
   var d = durMin(S.ini, S.ter);
   var reps = S.ans === 'si' ? S.reps.map(function (r) { return { comp: r.comp.trim(), np: r.np.trim(), cant: String(r.cant).trim(), pos: r.pos.trim() }; }) : [];
   return {
@@ -387,13 +426,14 @@ function armarRegistro() {
     cambio: S.ans === 'si' ? 'Sí' : 'No',
     reps: reps,
     est: S.est === 'op' ? 'Operativo' : 'Fuera de servicio',
-    obs: S.obs.trim()
+    obs: S.obs.trim(),
+    dev: miCel()
   };
 }
 
 function cargarHist() {
   if (S.hist) return;
-  api({ metodo: 'GET', accion: 'historial' }).then(function (l) {
+  api({ accion: 'historialEq' }).then(function (l) { return Array.isArray(l) ? l : api({ metodo: 'GET', accion: 'historial' }); }).catch(function () { return api({ metodo: 'GET', accion: 'historial' }); }).then(function (l) {
     try { localStorage.setItem('cm_hist', JSON.stringify(l || [])); } catch (e) {}
     set({ hist: l || [], histErr: '' });
   }).catch(function () {
@@ -522,17 +562,21 @@ function fmtF(s) { return s ? s.slice(8,10) + '/' + s.slice(5,7) + '/' + s.slice
 function historial() {
   var h = '<div class="body" style="gap:16px"><div class="card" style="gap:14px">' +
     '<div>' + lbl('CAEX', false, 'fcaex') + '<select id="fcaex" class="fld" onchange="A.fCaex(this.value)">' + optsCaex(S.fCaex, true) + '</select></div>' +
-    '<div>' + lbl('Fecha', false, 'fdate') + '<div style="display:flex;gap:8px"><input id="fdate" class="fld" type="date" value="' + esc(S.fDate) + '" onchange="A.fDate(this.value)"><button type="button" class="tog' + (S.fDate ? '' : ' on') + '" onclick="A.allDates()" style="flex:none;padding:0 14px;height:52px;font-size:17px">Todas</button></div><div class="hint" style="margin-top:6px">Puedes filtrar por CAEX, por fecha o por los dos</div></div></div>';
+    '<div>' + lbl('Fecha', false, 'fdate') + '<div style="display:flex;gap:8px"><input id="fdate" class="fld" type="date" value="' + esc(S.fDate) + '" onchange="A.fDate(this.value)"><button type="button" class="tog' + (S.fDate ? '' : ' on') + '" onclick="A.allDates()" style="flex:none;padding:0 14px;height:52px;font-size:17px">Todas</button></div><div class="hint" style="margin-top:6px">Puedes filtrar por CAEX, por fecha o por los dos</div></div>' +
+    '<div>' + lbl('Turno', false) + '<div style="display:flex;gap:8px">' +
+      '<button type="button" class="tog' + (S.fTurno ? '' : ' on') + '" onclick="A.fTurno(\'\')" style="flex:1;min-height:52px;font-size:16px">Todos</button>' +
+      '<button type="button" class="tog' + (S.fTurno === 'dia' ? ' on' : '') + '" onclick="A.fTurno(\'dia\')" style="flex:1;min-height:52px;font-size:16px;line-height:1.15">☀️ Día<br><small>08:00 a 20:00</small></button>' +
+      '<button type="button" class="tog' + (S.fTurno === 'noche' ? ' on' : '') + '" onclick="A.fTurno(\'noche\')" style="flex:1;min-height:52px;font-size:16px;line-height:1.15">🌙 Noche<br><small>20:00 a 08:00</small></button></div>' +
+      '<div class="hint" style="margin-top:6px">El turno se calcula con la hora de inicio y término de cada trabajo. Noche de la fecha elegida = desde las 20:00 de ese día hasta las 08:00 del día siguiente.</div></div></div>';
   if (S.hist === null) return h + '<div class="hint" style="text-align:center">Cargando registros...</div></div>';
   if (S.histErr) h += '<div class="alert">' + esc(S.histErr) + '</div>';
-  var res = S.hist.filter(function (r) { return (!S.fCaex || String(r.caex).split(', ').some(function (x) { return x === S.fCaex || (S.fCaex === 'Otros' && x.indexOf('Otros') === 0); })) && (!S.fDate || r.fecha === S.fDate); })
+  var res = S.hist.filter(function (r) { return (!S.fCaex || String(r.caex).split(', ').some(function (x) { return x === S.fCaex || (S.fCaex === 'Otros' && x.indexOf('Otros') === 0); })) && (function () { if (!S.fTurno) return !S.fDate || r.fecha === S.fDate; var tt = turnoDe(r); return tt.t === S.fTurno && (!S.fDate || tt.f === S.fDate); })(); })
     .sort(function (a, b) { return (parseFloat(b.reg) || 0) - (parseFloat(a.reg) || 0) || (b.fecha + b.ini).localeCompare(a.fecha + a.ini); });
   var nm = Object.keys(S.marcados).length, ni = Object.keys(S.mImp).length, ne = Object.keys(S.mEnv).length;
   if (S.env) {
     h += '<div style="display:flex;gap:8px"><button type="button" class="next" style="flex:1;background:#1F6B45;color:#F2B705" onclick="A.modoEnv()">✕ Cancelar</button>' +
-      '<button type="button" class="next" style="flex:1;background:#25A35A;color:#fff' + (ne ? '' : ';opacity:.5') + '" onclick="A.enviarWsp()">WhatsApp (' + ne + ')</button></div>' +
-      '<button type="button" class="back" style="width:100%' + (ne ? '' : ';opacity:.5') + '" onclick="marcarSoloWsp()">✔ Marcar como ya enviados (' + ne + ')</button>' +
-      '<div class="hint">Marca con ✔ los trabajos y toca WhatsApp. Si ya los habías enviado antes, toca "Marcar como ya enviados".</div>';
+      '<button type="button" class="next" style="flex:1;background:#25A35A;color:#fff' + (ne ? '' : ';opacity:.5') + '" onclick="A.enviarWsp()">Enviar (' + ne + ')</button></div>' +
+      '<div class="hint">Marca con ✔ los trabajos y toca Enviar. Elige WhatsApp o tu correo (Gmail). Al enviarlos quedan marcados solos como enviados.</div>';
   } else if (S.impr) {
     h += '<div style="display:flex;gap:8px"><button type="button" class="next" style="flex:1;background:#1E5BB8;color:#fff" onclick="A.modoImpr()">✕ Cancelar</button>' +
       '<button type="button" class="next" style="flex:1;background:#1E5BB8;color:#fff' + (ni ? '' : ';opacity:.5') + '" onclick="A.imprimir()">🖨️ Imprimir (' + ni + ')</button></div>' +
@@ -543,12 +587,13 @@ function historial() {
       (S.elim ? '<button type="button" class="next" style="flex:1;background:#B3261E;color:#fff' + (nm ? '' : ';opacity:.5') + '" onclick="A.borrarSel()">Borrar (' + nm + ')</button>' : '') + '</div>';
   }
   if (S.elim) h += '<div class="hint">Marca los trabajos que quieres borrar y toca Borrar.</div>';
-  h += '<div style="font-size:17px;font-weight:700">' + res.length + (res.length === 1 ? ' trabajo' : ' trabajos') + ' · ' + (S.fCaex ? nomC(S.fCaex) : 'todos los CAEX') + ' · ' + (S.fDate ? fmtF(S.fDate) : 'todas las fechas') + '</div>';
+  h += '<div style="font-size:17px;font-weight:700">' + res.length + (res.length === 1 ? ' trabajo' : ' trabajos') + ' · ' + (S.fCaex ? nomC(S.fCaex) : 'todos los CAEX') + ' · ' + (S.fDate ? fmtF(S.fDate) : 'todas las fechas') + (S.fTurno ? ' · turno ' + (S.fTurno === 'dia' ? 'día' : 'noche') : '') + '</div>';
   if (!res.length) h += '<div style="background:#FFF;border:2px dashed #C9CCCF;border-radius:12px;padding:24px;text-align:center;font-size:16px;color:#4A4F55">No hay trabajos registrados con ese filtro.</div>';
   res.forEach(function (r) {
     h += '<div class="card">' + (S.elim ? '<label style="display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;color:#B3261E;cursor:pointer"><input type="checkbox" value="' + esc(r.reg) + '" style="width:28px;height:28px" ' + (S.marcados[r.reg] ? 'checked' : '') + ' onchange="A.marcar(this.value,this.checked)"> Marcar para borrar</label>' : '') +
       (S.env ? '<label style="display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;color:#1F6B45;cursor:pointer"><input type="checkbox" value="' + esc(r.reg) + '" style="width:28px;height:28px;accent-color:#1F6B45" ' + (S.mEnv[r.reg] ? 'checked' : '') + ' onchange="A.marcarEnv(this.value,this.checked)"> Marcar para enviar' + (leerWsp()[r.reg] ? ' <span style="color:#25A35A">(ya enviado)</span>' : '') + '</label>' : '') +
       (S.impr ? '<label style="display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;color:#1E5BB8;cursor:pointer"><input type="checkbox" value="' + esc(r.reg) + '" style="width:28px;height:28px;accent-color:#1E5BB8" ' + (S.mImp[r.reg] ? 'checked' : '') + ' onchange="A.marcarImp(this.value,this.checked)"> Marcar para imprimir</label>' : '') +
+      (!S.elim && !S.env && !S.impr && mioDe(r) ? '<button type="button" class="back" style="width:100%;margin-bottom:8px" onclick="A.editar(\'' + esc(r.reg) + '\')">✏️ Editar este trabajo</button>' : '') +
       tarjeta(r) + '</div>';
   });
   return h + '</div>';
@@ -585,6 +630,7 @@ function imagenTrabajo(r) {
 function leerWsp() { try { return JSON.parse(localStorage.getItem('cm_wsp') || '{}'); } catch (e) { return {}; } }
 function marcarWsp(lista) { var m = leerWsp(), t = new Date(), f = ('0' + t.getDate()).slice(-2) + '/' + ('0' + (t.getMonth() + 1)).slice(-2) + ' ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
   lista.forEach(function (r) { m[r.reg] = f; }); try { localStorage.setItem('cm_wsp', JSON.stringify(m)); } catch (e) {} }
+function desmarcarWsp(lista) { var m = leerWsp(); lista.forEach(function (r) { delete m[r.reg]; }); try { localStorage.setItem('cm_wsp', JSON.stringify(m)); } catch (e) {} }
 function marcarSoloWsp() { var lista = (S.hist || []).filter(function (r) { return S.mEnv[r.reg]; }); if (!lista.length) return alert('Marca al menos un trabajo'); marcarWsp(lista); set({ env: false, mEnv: {} }); }
 function enviarWsp() {
   var lista = (S.hist || []).filter(function (r) { return S.mEnv[r.reg]; });
@@ -606,7 +652,9 @@ function enviarWsp() {
       var files = [].concat.apply([], grupos).filter(Boolean);
       if (faltan) alert(faltan + (faltan === 1 ? ' foto no se pudo bajar' : ' fotos no se pudieron bajar') + ' (sin señal). Se envía lo demás.');
       if (navigator.canShare && navigator.canShare({ files: files })) {
-        return navigator.share({ files: files, title: asunto, text: asunto }).then(function () { marcarWsp(lista); set({ env: false, mEnv: {} }); });
+        marcarWsp(lista);
+        return navigator.share({ files: files, title: asunto, text: asunto }).then(function () { set({ env: false, mEnv: {} }); })
+          .catch(function (e) { if (e && e.name === 'AbortError') { desmarcarWsp(lista); render(); return; } throw e; });
       }
       files.forEach(function (f) { var a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); });
       marcarWsp(lista); alert('Este navegador no permite compartir directo. Las imágenes se descargaron; adjúntalas en WhatsApp.'); set({ env: false, mEnv: {} });
@@ -618,7 +666,7 @@ function tarjeta(r) {
   var ew = leerWsp()[r.reg];
   var it = function (k, v) { return v ? '<div><div class="small">' + k + '</div><div style="font-size:16px;white-space:pre-line">' + esc(v) + '</div></div>' : ''; };
   var op = r.est === 'Operativo';
-  return (ew ? '<div class="wspok">✅ Enviado por WhatsApp · ' + esc(ew) + '</div>' : '') + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="big" style="font-size:22px">' + esc(nomC(r.caex)) + ' · ' + fmtF(r.fecha) + '</div><span class="badge ' + (op ? 'b-op' : 'b-fs') + '">' + esc(r.est) + '</span></div>' +
+  return (ew ? '<div class="wspok">✅ Enviado · ' + esc(ew) + '</div>' : '') + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="big" style="font-size:22px">' + esc(nomC(r.caex)) + ' · ' + fmtF(r.fecha) + '</div><span class="badge ' + (op ? 'b-op' : 'b-fs') + '">' + esc(r.est) + '</span></div>' +
       '<div class="g3" style="gap:6px;background:#F2F2EF;border-radius:8px;padding:8px 10px"><div><div class="small">Inicio</div><div style="font-size:19px;font-weight:700">' + esc(r.ini || '--:--') + '</div></div><div><div class="small">Término</div><div style="font-size:19px;font-weight:700">' + esc(r.ter || '--:--') + '</div></div><div><div class="small">Duración</div><div style="font-size:19px;font-weight:700">' + durTxt(r.ini, r.ter) + '</div></div></div>' +
       it('Enviado por el mecánico', fmtReg(r.reg)) + it('Turno', [r.turno, r.grupo].filter(Boolean).join(' · ')) + it('Horómetro', r.hor ? r.hor + ' hrs' : '') + it('Trabajo', r.tipo) + it('Detencion', r.det) + it('Sistemas', r.sis) + it('Trabajo realizado', r.trab) +
       it('Repuestos', r.reps || 'Sin cambio de componente') + it('Abastecimiento', r.ab) + it('Detalle', r.detalle) + it('Grasa', r.kg ? r.kg + ' kg' : '') + it('Mantenedores', r.nombres) + it('Observaciones', r.obs) +
@@ -699,7 +747,7 @@ function render() {
   h += '</div>';
   if (!isForm) h += historial();
   else if (S.sent) h += enviado();
-  else h += [paso1, paso2, paso3, paso4][S.step - 1](bad, f);
+  else h += (S.edit ? '<div style="margin:12px 16px 0;padding:10px 12px;border-radius:10px;background:#FFF4CC;border:2px solid #F2B705;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px">✏️ Editando un trabajo ya enviado<button type="button" class="back" style="flex:none;padding:0 12px;min-height:40px" onclick="A.cancelarEd()">Cancelar</button></div>' : '') + [paso1, paso2, paso3, paso4][S.step - 1](bad, f);
   h += modal();
   document.getElementById('app').innerHTML = h;
 }
