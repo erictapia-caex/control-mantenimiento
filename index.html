@@ -632,6 +632,11 @@ function marcarWsp(lista) { var m = leerWsp(), t = new Date(), f = ('0' + t.getD
   lista.forEach(function (r) { m[r.reg] = f; }); try { localStorage.setItem('cm_wsp', JSON.stringify(m)); } catch (e) {} }
 function desmarcarWsp(lista) { var m = leerWsp(); lista.forEach(function (r) { delete m[r.reg]; }); try { localStorage.setItem('cm_wsp', JSON.stringify(m)); } catch (e) {} }
 function marcarSoloWsp() { var lista = (S.hist || []).filter(function (r) { return S.mEnv[r.reg]; }); if (!lista.length) return alert('Marca al menos un trabajo'); marcarWsp(lista); set({ env: false, mEnv: {} }); }
+// Dentro del APK (Flutter) compartir lo hace el telefono; el trabajo se marca enviado solo si se compartio
+function compartirNativo(files, texto, lista) {
+  return Promise.all(files.map(function (f) { return new Promise(function (ok) { var fr = new FileReader(); fr.onload = function () { ok({ nombre: f.name, mime: f.type, b64: String(fr.result).split(',')[1] }); }; fr.readAsDataURL(f); }); }))
+    .then(function (arr) { window.alCompartir = function () { marcarWsp(lista); set({ env: false, mEnv: {} }); }; AppNativa.postMessage(JSON.stringify({ tipo: 'compartir', texto: texto, archivos: arr })); });
+}
 function enviarWsp() {
   var lista = (S.hist || []).filter(function (r) { return S.mEnv[r.reg]; });
   if (!lista.length) return alert('Marca al menos un trabajo');
@@ -651,13 +656,13 @@ function enviarWsp() {
     .then(function (grupos) {
       var files = [].concat.apply([], grupos).filter(Boolean);
       if (faltan) alert(faltan + (faltan === 1 ? ' foto no se pudo bajar' : ' fotos no se pudieron bajar') + ' (sin señal). Se envía lo demás.');
+      if (window.AppNativa) return compartirNativo(files, asunto, lista);
       if (navigator.canShare && navigator.canShare({ files: files })) {
-        marcarWsp(lista);
-        return navigator.share({ files: files, title: asunto, text: asunto }).then(function () { set({ env: false, mEnv: {} }); })
-          .catch(function (e) { if (e && e.name === 'AbortError') { desmarcarWsp(lista); render(); return; } throw e; });
+        return navigator.share({ files: files, title: asunto, text: asunto }).then(function () { marcarWsp(lista); set({ env: false, mEnv: {} }); })
+          .catch(function (e) { if (e && e.name === 'AbortError') { render(); return; } throw e; });
       }
       files.forEach(function (f) { var a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); });
-      marcarWsp(lista); alert('Este navegador no permite compartir directo. Las imágenes se descargaron; adjúntalas en WhatsApp.'); set({ env: false, mEnv: {} });
+      alert('Este navegador no permite compartir directo. Las imágenes se descargaron; adjúntalas en WhatsApp. El trabajo NO quedó marcado como enviado.'); set({ env: false, mEnv: {} });
     }).catch(function (e) { if (e && e.name !== 'AbortError') alert('No se pudo enviar: ' + e); });
 }
 
